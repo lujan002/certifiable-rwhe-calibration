@@ -80,9 +80,9 @@ def plot_poses_interactive(tag_ids, translations, rotation_matrices, arrow_scale
     fig.update_layout(
         title="Tag Poses Visualization",
         scene=dict(
-            xaxis_title="X",
-            yaxis_title="Y",
-            zaxis_title="Z",
+            xaxis_title="X (mm)",
+            yaxis_title="Y (mm)",
+            zaxis_title="Z (mm)",
             aspectmode='data',
             camera=dict(
                 eye=dict(x=1.5, y=1.5, z=1.5)
