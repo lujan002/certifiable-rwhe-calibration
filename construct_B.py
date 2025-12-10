@@ -9,6 +9,7 @@ import numpy as np
 import cv2
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
+import yaml
 
 import sys
 import os
@@ -290,7 +291,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, default=None, help='Output CSV file path (default: video_name_poses.csv)')
     parser.add_argument('--tag-size', type=float, default=0.1, help='Tag size in meters')
     parser.add_argument('--tag-id', type=int, default=None, help='Specific tag ID to track (default: use first detected tag)')
-    parser.add_argument('--camera-matrix', type=str, default=None, help='Path to camera calibration file (numpy .npz with K and dist)')
+    parser.add_argument('--camera-matrix', type=str, default=None, help='Path to camera calibration file (.yaml or .npz format)')
     parser.add_argument('--num-samples', type=int, default=None, help='Total number of frames to sample from the video (e.g., 30 to sample 30 frames evenly spaced). If None, processes all frames.')
     parser.add_argument('--show-visualization', action='store_true', help='Show visualization playback with detected AprilTags overlaid')
     parser.add_argument('--tag-family', type=str, default='tag36h11', help='Tag family (default: tag36h11)')
@@ -298,9 +299,23 @@ if __name__ == '__main__':
     
     # Load camera matrix
     if args.camera_matrix:
-        calib_data = np.load(args.camera_matrix)
-        K = calib_data['K'].astype(np.float32)
-        dist = calib_data['dist'].astype(np.float32)
+        calib_path = Path(args.camera_matrix)
+        if calib_path.suffix.lower() == '.yaml' or calib_path.suffix.lower() == '.yml':
+            # Load from YAML file
+            print("Using camera matrix from YAML file: ", calib_path)
+            with open(calib_path, 'r') as f:
+                calib_data = yaml.safe_load(f)
+            print("Camera matrix data: ", calib_data)
+            # Extract camera matrix (3x3) from YAML format
+            cm_data = calib_data['camera_matrix']['data']
+            K = np.array(cm_data, dtype=np.float32).reshape(3, 3)
+            # Extract distortion coefficients
+            dist = np.array(calib_data['distortion_coefficients']['data'], dtype=np.float32)
+        else:
+            # Load from npz file (backwards compatibility)
+            calib_data = np.load(args.camera_matrix)
+            K = calib_data['K'].astype(np.float32)
+            dist = calib_data['dist'].astype(np.float32)
     else:
         # Default camera matrix (adjust for your camera)
         print("Warning: Using default camera matrix. For accurate results, provide --camera-matrix")
