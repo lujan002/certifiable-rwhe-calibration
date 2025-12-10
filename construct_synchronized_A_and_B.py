@@ -1,5 +1,6 @@
 import numpy as np
 import csv
+import argparse
 from pathlib import Path
 from typing import Tuple, List, Optional, Dict
 from collections import defaultdict
@@ -462,28 +463,59 @@ def synchronize_all_cameras_by_tag(csv_file_A: str,
 
 # Example usage
 if __name__ == "__main__":
-    # Example: split every tag for both cameras and save per-tag/camera CSVs
-    csv_file_A = "data/high-bay/raw/optitrack_cut.csv"
-    camera_files = {
-        1: "data/high-bay/raw/Cam1_cut.csv",
-        2: "data/high-bay/raw/Cam2_cut.csv",
-    }
-    output_dir = "data/high-bay/combined"
-    threshold = 0.1  # 100ms threshold
-
+    parser = argparse.ArgumentParser(
+        description='Synchronize OptiTrack (A) data with camera (B) data by tag and save per-tag/camera CSV pairs',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example usage:
+  python construct_synchronized_A_and_B.py \\
+    --csv-A data/high-bay/raw/optitrack_cut.csv \\
+    --camera 1:data/high-bay/raw/Cam1_cut.csv \\
+    --camera 2:data/high-bay/raw/Cam2_cut.csv \\
+    --output data/high-bay/combined \\
+    --threshold 0.1
+        """
+    )
+    
+    parser.add_argument('--csv-A', type=str, required=True,
+                        help='Path to OptiTrack CSV file (dataset A)')
+    parser.add_argument('--camera', action='append', dest='camera_specs',
+                        help='Camera file as "camera_id:file_path" (e.g., "1:data/high-bay/raw/Cam1.csv"). Can be specified multiple times.',
+                        required=True)
+    parser.add_argument('--output', type=str, default='data/high-bay/combined',
+                        help='Output directory for synchronized CSV files (default: data/high-bay/combined)')
+    parser.add_argument('--threshold', type=float, default=0.1,
+                        help='Maximum time difference for matching timestamps in seconds (default: 0.1)')
+    
+    args = parser.parse_args()
+    
+    # Parse camera files from "id:path" format
+    camera_files = {}
+    for spec in args.camera_specs:
+        if ':' not in spec:
+            parser.error(f'Camera specification must be in format "camera_id:file_path", got: {spec}')
+        try:
+            camera_id_str, file_path = spec.split(':', 1)
+            camera_id = int(camera_id_str)
+            camera_files[camera_id] = file_path
+        except ValueError as e:
+            parser.error(f'Invalid camera specification "{spec}": camera_id must be an integer. Error: {e}')
+    
+    if not camera_files:
+        parser.error('At least one --camera argument is required')
+    
+    print(f"Processing synchronization:")
+    print(f"  Dataset A: {args.csv_A}")
+    print(f"  Cameras: {len(camera_files)} camera(s)")
+    for cam_id, cam_file in camera_files.items():
+        print(f"    Camera {cam_id}: {cam_file}")
+    print(f"  Output directory: {args.output}")
+    print(f"  Time threshold: {args.threshold}s")
+    print()
+    
     synchronize_all_cameras_by_tag(
-        csv_file_A=csv_file_A,
+        csv_file_A=args.csv_A,
         camera_files=camera_files,
-        output_dir=output_dir,
-        threshold=threshold,
-        # Example overrides for differing CSV layouts:
-        # timestamp_col_A=0,
-        # pos_cols_A=(1, 2, 3),
-        # quat_cols_A=(4, 5, 6, 7),
-        # has_header_A=True,
-        # timestamp_col_B=0,
-        # tag_col_B=1,
-        # pos_cols_B=(6, 7, 8),
-        # quat_cols_B=(2, 3, 4, 5),
-        # has_header_B=True,
+        output_dir=args.output,
+        threshold=args.threshold,
     )
