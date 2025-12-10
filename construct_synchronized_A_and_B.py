@@ -411,10 +411,10 @@ def synchronize_all_cameras_by_tag(csv_file_A: str,
                                    camera_files: Dict[int, str],
                                    output_dir: str,
                                    threshold: float,
-                                   timestamp_col_A: int = 2,
+                                   timestamp_col_A: int = 1,
                                    pos_cols_A: Tuple[int, int, int] = (7, 8, 9),
-                                   quat_cols_A: Tuple[int, int, int, int] = (3, 4, 5, 6),
-                                   skip_rows_A: int = 0,
+                                   quat_cols_A: Tuple[int, int, int, int] = (2, 3, 4, 5),
+                                   skip_rows_A: int = 7,
                                    has_header_A: bool = False,
                                    **camera_kwargs):
     """
