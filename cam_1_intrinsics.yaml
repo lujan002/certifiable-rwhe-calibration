@@ -7,8 +7,8 @@ camera_matrix:
   rows: 3
   cols: 3
   # Placeholder values for ~60° FOV at 1080p - REPLACE WITH CALIBRATED VALUES
-  data: [ 1073.86684096, 0.00000000, 686.62773615,
-          0.00000000, 1069.94368913, 370.07470614,
+  data: [ 1075.37195135, 0.00000000, 639.25868944,
+          0.00000000, 1075.47338650, 351.35106788,
           0.00000000, 0.00000000, 1.00000000]
 
 distortion_coefficients:
