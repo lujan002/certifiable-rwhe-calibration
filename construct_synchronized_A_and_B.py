@@ -432,13 +432,20 @@ def synchronize_all_cameras_by_tag(csv_file_A: str,
 
     output_root = Path(output_dir)
     # Start fresh: remove existing files in the output directory
+    files_deleted = 0
     if output_root.exists():
         for item in output_root.iterdir():
             try:
                 if item.is_file():
                     item.unlink()
+                    files_deleted += 1
             except Exception as e:
                 print(f"Warning: could not delete {item}: {e}")
+    
+    if files_deleted > 0:
+        print(f"Cleaned output directory: deleted {files_deleted} existing file(s) from {output_dir}")
+    else:
+        print(f"Output directory {output_dir} is empty (no files to delete)")
 
     for camera_id, csv_file_B in camera_files.items():
         print(f"\nProcessing camera {camera_id} ({csv_file_B}) ...")
