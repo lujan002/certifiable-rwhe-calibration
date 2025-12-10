@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,9 +15,20 @@ def quaternion_to_euler(x, y, z, w):
     euler = r.as_euler('xyz', degrees=False)  # Returns [roll, pitch, yaw]
     return euler
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Plot OptiTrack poses from CSV.")
+    parser.add_argument(
+        "csv_file",
+        nargs="?",
+        default="data/high-bay/raw/optitrack_success3.csv",
+        help="Path to OptiTrack CSV (default: hardcoded example path).",
+    )
+    return parser.parse_args()
+
+
 def main():
-    # Read CSV file
-    csv_file = "/home/ubuntu-22/Desktop/Certifiable-RWHEC/session/optitrack/poses.csv"
+    args = parse_args()
+    csv_file = args.csv_file
     df = pd.read_csv(csv_file, skiprows=7)
     print(f"Loaded data from {csv_file} with shape {df.shape}")
     
