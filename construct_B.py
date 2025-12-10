@@ -451,11 +451,14 @@ if __name__ == '__main__':
                 'z': np.nan
             })
         else:
+            # Convert pose translations from meters (solvePnP output) to millimeters
+            # to match the OptiTrack dataset and downstream expectations.
+            meter_to_mm = 1000.0
             for tag_id, pose, _ in detections:
                 q, t = pose.to_quaternion_translation()
                 # q is [w, x, y, z], but we need [qx, qy, qz, qw]
                 qx, qy, qz, qw = q[1], q[2], q[3], q[0]
-                x, y, z = t[0], t[1], t[2]
+                x, y, z = t[0] * meter_to_mm, t[1] * meter_to_mm, t[2] * meter_to_mm
                 
                 csv_data.append({
                     'timestamp': timestamp,
