@@ -366,19 +366,22 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
         use_detection_csv: If True, use detection CSV mode
     """
     ax.clear()
+    video_detections_struct = None
+    timestamp_for_frame = None
+    timestamp = None
     
     # Update video feed in separate OpenCV window if available
     if video_cap is not None and video_fps is not None and video_fps > 0:
         # Get current timestamp
         if use_detection_csv and detection_data is not None:
-            timestamp = detection_data['timestamps'][frame_idx]
-            detections = detection_data['detections_by_timestamp'][timestamp]
+            timestamp_for_frame = detection_data['timestamps'][frame_idx]
+            detections = detection_data['detections_by_timestamp'][timestamp_for_frame]
         else:
-            timestamp = optitrack_data['timestamps'][frame_idx]
+            timestamp_for_frame = optitrack_data['timestamps'][frame_idx]
             detections = []
         
         # Get video frame at this timestamp
-        video_frame = get_video_frame_at_timestamp(video_cap, timestamp, video_fps, frame_idx)
+        video_frame = get_video_frame_at_timestamp(video_cap, timestamp_for_frame, video_fps, frame_idx)
         if video_frame is not None:
             # Convert RGB back to BGR for OpenCV display
             frame_bgr = cv2.cvtColor(video_frame, cv2.COLOR_RGB2BGR)
@@ -387,9 +390,12 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
             if detector is not None:
                 try:
                     # Try to detect tags in the current video frame
-                    detections_video = detector.detect(frame_bgr)
+                    detections_video = detector.detect(
+                        frame_bgr, frame_num=frame_idx, timestamp=timestamp_for_frame
+                    )
                     
                     if detections_video and len(detections_video) > 0:
+                        video_detections_struct = []
                         # Handle different return formats from detector
                         for detection in detections_video:
                             if len(detection) == 4:
@@ -418,6 +424,14 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
                             # Draw distance if pose is available (same as construct_B.py)
                             if pose is not None and hasattr(pose, 't'):
                                 distance = np.linalg.norm(pose.t)
+                                # Keep a copy of the pose using construct_B logic so plot matches
+                                video_detections_struct.append({
+                                    'tag_id': tag_id,
+                                    'position': pose.t.astype(float),
+                                    'rotation': pose.R.astype(float),
+                                    'quaternion': Rotation.from_matrix(pose.R).as_quat(),
+                                    'source': 'video'
+                                })
                                 cv2.putText(frame_bgr, f"{distance:.2f}m", 
                                            (center[0], center[1] + 25),
                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
@@ -427,7 +441,7 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
                     traceback.print_exc()
             
             # Add text overlay with timestamp and frame info
-            cv2.putText(frame_bgr, f'Time: {timestamp:.3f}s', (10, 30),
+            cv2.putText(frame_bgr, f'Time: {timestamp_for_frame:.3f}s', (10, 30),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             cv2.putText(frame_bgr, f'Frame: {frame_idx}', (10, 60),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
@@ -473,171 +487,90 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
         # Legacy mode: Get camera pose from Optitrack
         camera_pos = optitrack_data['positions'][frame_idx]
         camera_rot = optitrack_data['rotation_matrices'][frame_idx]
+        timestamp = timestamp_for_frame if timestamp_for_frame is not None else optitrack_data['timestamps'][frame_idx]
         detections = None
     
+    # Prefer detections computed directly from the video using construct_B logic
+    if video_detections_struct is not None:
+        detections = video_detections_struct
+        # Keep timestamp consistent with the video frame we processed
+        if timestamp_for_frame is not None:
+            timestamp = timestamp_for_frame
+    
     if use_detection_csv and detections is not None:
-        # Use detection CSV mode
-        if len(detections) == 0:
-            # No tags detected at this timestamp
-            tag_ids_detected = []
-        else:
-            tag_ids_detected = [det['tag_id'] for det in detections]
+        # Use detection CSV mode (always plot in world/Optitrack frame)
+        tag_ids_detected = [det['tag_id'] for det in detections] if len(detections) > 0 else []
         
-        # Color map for different tags
         max_tag_id = max(tag_ids_detected) if tag_ids_detected else 0
         colors = plt.cm.tab20(np.linspace(0, 1, max(max_tag_id + 1, 20)))
         
-        if show_in_world_frame:
-            # Draw camera frame
-            if show_camera_frame:
-                draw_coordinate_frame(ax, camera_pos, camera_rot, scale=0.005, alpha=0.7)
-                ax.scatter(*camera_pos, c='blue', s=50, marker='o', label='Camera', alpha=0.7, zorder=10)
-            
-            # Draw all detected tags in world frame
-            all_tag_positions = []
-            for det in detections:
-                tag_id = det['tag_id']
-                tag_pos_cam = det['position']
-                tag_rot_cam = det['rotation']
-                color = colors[tag_id % len(colors)]
-                
-                # Transform tag to world frame
-                tag_pos_world, tag_rot_world = transform_to_world(
-                    tag_pos_cam, tag_rot_cam, camera_pos, camera_rot
-                )
-                all_tag_positions.append(tag_pos_world)
-                
-                # Draw tag frame in world coordinates
-                draw_coordinate_frame(ax, tag_pos_world, tag_rot_world, scale=0.003, alpha=0.8)
-                ax.scatter(*tag_pos_world, c=[color], s=80, marker='^', 
-                          label=f'Tag {tag_id}', alpha=0.8, zorder=5)
-                
-                # Draw line from camera to tag
-                ax.plot([camera_pos[0], tag_pos_world[0]], 
-                       [camera_pos[1], tag_pos_world[1]], 
-                       [camera_pos[2], tag_pos_world[2]], 
-                       'k--', linewidth=1, alpha=0.3)
-            
-            # Set axis limits for detection CSV world frame (center on camera, fixed scale)
-            max_range = fixed_max_range if fixed_max_range is not None else 0.5
-            
-            # Center view on camera position with uniform spacing
-            ax.set_xlim(camera_pos[0] - max_range, camera_pos[0] + max_range)
-            ax.set_ylim(camera_pos[1] - max_range, camera_pos[1] + max_range)
-            ax.set_zlim(camera_pos[2] - max_range, camera_pos[2] + max_range)
+        if show_camera_frame:
+            draw_coordinate_frame(ax, camera_pos, camera_rot, scale=0.005, alpha=0.7)
+            ax.scatter(*camera_pos, c='blue', s=50, marker='o', label='Camera', alpha=0.7, zorder=10)
         
-        else:
-            # Camera frame mode
-            ax.scatter(0, 0, 0, c='blue', s=50, marker='o', label='Camera', alpha=0.7, zorder=10)
-            draw_coordinate_frame(ax, np.zeros(3), np.eye(3), scale=0.005, alpha=0.7)
+        all_tag_positions = []
+        for det in detections:
+            tag_id = det['tag_id']
+            tag_pos_cam = det['position']
+            tag_rot_cam = det['rotation']
+            color = colors[tag_id % len(colors)]
             
-            for det in detections:
-                tag_id = det['tag_id']
-                tag_pos_cam = det['position']
-                tag_rot_cam = det['rotation']
-                color = colors[tag_id % len(colors)]
-                
-                draw_coordinate_frame(ax, tag_pos_cam, tag_rot_cam, scale=0.003, alpha=0.8)
-                ax.scatter(*tag_pos_cam, c=[color], s=80, marker='^', 
-                          label=f'Tag {tag_id}', alpha=0.8, zorder=5)
-                
-                ax.plot([0, tag_pos_cam[0]], [0, tag_pos_cam[1]], [0, tag_pos_cam[2]], 
-                       'k--', linewidth=1, alpha=0.3)
+            tag_pos_world, tag_rot_world = transform_to_world(
+                tag_pos_cam, tag_rot_cam, camera_pos, camera_rot
+            )
+            all_tag_positions.append(tag_pos_world)
             
-            # Set axis limits for detection CSV camera frame (fixed scale)
-            max_range = fixed_max_range if fixed_max_range is not None else 0.5
+            draw_coordinate_frame(ax, tag_pos_world, tag_rot_world, scale=0.003, alpha=0.8)
+            ax.scatter(*tag_pos_world, c=[color], s=80, marker='^', 
+                      label=f'Tag {tag_id}', alpha=0.8, zorder=5)
             
-            ax.set_xlim(-max_range, max_range)
-            ax.set_ylim(-max_range, max_range)
-            ax.set_zlim(-max_range, max_range)
+            ax.plot([camera_pos[0], tag_pos_world[0]], 
+                   [camera_pos[1], tag_pos_world[1]], 
+                   [camera_pos[2], tag_pos_world[2]], 
+                   'k--', linewidth=1, alpha=0.3)
+        
+        max_range = fixed_max_range if fixed_max_range is not None else 0.5
+        ax.set_xlim(camera_pos[0] - max_range, camera_pos[0] + max_range)
+        ax.set_ylim(camera_pos[1] - max_range, camera_pos[1] + max_range)
+        ax.set_zlim(camera_pos[2] - max_range, camera_pos[2] + max_range)
     
     else:
-        # Legacy mode: Use B CSV data
-        # Color map for different tags
+        # Legacy mode: Use B CSV data (always plot in world frame)
         colors = plt.cm.tab10(np.linspace(0, 1, len(all_b_data)))
         
-        if show_in_world_frame:
-            # Draw camera frame
-            if show_camera_frame:
-                draw_coordinate_frame(ax, camera_pos, camera_rot, scale=0.005, alpha=0.7)
-                ax.scatter(*camera_pos, c='blue', s=50, marker='o', label='Camera', alpha=0.7, zorder=10)
-            
-            # Draw all tags in world frame (only if B data exists for this frame)
-            all_tag_positions = []
-            for (tag_id, b_data), color in zip(all_b_data.items(), colors):
-                # Check if B data exists for this frame
-                if not b_data.get('has_data', np.ones(len(b_data['positions']), dtype=bool))[frame_idx]:
-                    continue  # Skip this tag for this frame
-                
-                # Get tag pose from B matrix (relative to camera)
-                tag_pos_cam = b_data['positions'][frame_idx]
-                tag_rot_cam = b_data['rotation_matrices'][frame_idx]
-                
-                # Check for NaN (no data)
-                if np.any(np.isnan(tag_pos_cam)) or np.any(np.isnan(tag_rot_cam)):
-                    continue
-                
-                # Transform tag to world frame
-                tag_pos_world, tag_rot_world = transform_to_world(
-                    tag_pos_cam, tag_rot_cam, camera_pos, camera_rot
-                )
-                all_tag_positions.append(tag_pos_world)
-                
-                # Draw tag frame in world coordinates
-                draw_coordinate_frame(ax, tag_pos_world, tag_rot_world, scale=0.003, alpha=0.8)
-                ax.scatter(*tag_pos_world, c=[color], s=80, marker='^', 
-                          label=f'Tag {tag_id}', alpha=0.8, zorder=5)
-                
-                # Draw line from camera to tag
-                ax.plot([camera_pos[0], tag_pos_world[0]], 
-                       [camera_pos[1], tag_pos_world[1]], 
-                       [camera_pos[2], tag_pos_world[2]], 
-                       'k--', linewidth=1, alpha=0.3)
-            
-            # Set axis limits for legacy mode world frame (center on camera, fixed scale)
-            max_range = fixed_max_range if fixed_max_range is not None else 0.5
-            
-            # Center view on camera position with uniform spacing
-            ax.set_xlim(camera_pos[0] - max_range, camera_pos[0] + max_range)
-            ax.set_ylim(camera_pos[1] - max_range, camera_pos[1] + max_range)
-            ax.set_zlim(camera_pos[2] - max_range, camera_pos[2] + max_range)
+        if show_camera_frame:
+            draw_coordinate_frame(ax, camera_pos, camera_rot, scale=0.005, alpha=0.7)
+            ax.scatter(*camera_pos, c='blue', s=50, marker='o', label='Camera', alpha=0.7, zorder=10)
         
-        else:
-            # Legacy mode camera frame
-            # Show in camera frame (camera at origin)
-            ax.scatter(0, 0, 0, c='blue', s=50, marker='o', label='Camera', alpha=0.7, zorder=10)
-            draw_coordinate_frame(ax, np.zeros(3), np.eye(3), scale=0.005, alpha=0.7)
+        all_tag_positions = []
+        for (tag_id, b_data), color in zip(all_b_data.items(), colors):
+            if not b_data.get('has_data', np.ones(len(b_data['positions']), dtype=bool))[frame_idx]:
+                continue
             
-            # Draw all tags relative to camera (only if B data exists for this frame)
-            all_tag_positions_cam = []
-            for (tag_id, b_data), color in zip(all_b_data.items(), colors):
-                # Check if B data exists for this frame
-                if not b_data.get('has_data', np.ones(len(b_data['positions']), dtype=bool))[frame_idx]:
-                    continue  # Skip this tag for this frame
-                
-                tag_pos_cam = b_data['positions'][frame_idx]
-                tag_rot_cam = b_data['rotation_matrices'][frame_idx]
-                
-                # Check for NaN (no data)
-                if np.any(np.isnan(tag_pos_cam)) or np.any(np.isnan(tag_rot_cam)):
-                    continue
-                
-                all_tag_positions_cam.append(tag_pos_cam)
-                
-                draw_coordinate_frame(ax, tag_pos_cam, tag_rot_cam, scale=0.003, alpha=0.8)
-                ax.scatter(*tag_pos_cam, c=[color], s=80, marker='^', 
-                          label=f'Tag {tag_id}', alpha=0.8, zorder=5)
-                
-                # Draw line from origin to tag
-                ax.plot([0, tag_pos_cam[0]], [0, tag_pos_cam[1]], [0, tag_pos_cam[2]], 
-                       'k--', linewidth=1, alpha=0.3)
+            tag_pos_cam = b_data['positions'][frame_idx]
+            tag_rot_cam = b_data['rotation_matrices'][frame_idx]
             
-            # Set axis limits for legacy mode camera frame (fixed scale)
-            max_range = fixed_max_range if fixed_max_range is not None else 0.5
+            if np.any(np.isnan(tag_pos_cam)) or np.any(np.isnan(tag_rot_cam)):
+                continue
             
-            ax.set_xlim(-max_range, max_range)
-            ax.set_ylim(-max_range, max_range)
-            ax.set_zlim(-max_range, max_range)
+            tag_pos_world, tag_rot_world = transform_to_world(
+                tag_pos_cam, tag_rot_cam, camera_pos, camera_rot
+            )
+            all_tag_positions.append(tag_pos_world)
+            
+            draw_coordinate_frame(ax, tag_pos_world, tag_rot_world, scale=0.003, alpha=0.8)
+            ax.scatter(*tag_pos_world, c=[color], s=80, marker='^', 
+                      label=f'Tag {tag_id}', alpha=0.8, zorder=5)
+            
+            ax.plot([camera_pos[0], tag_pos_world[0]], 
+                   [camera_pos[1], tag_pos_world[1]], 
+                   [camera_pos[2], tag_pos_world[2]], 
+                   'k--', linewidth=1, alpha=0.3)
+        
+        max_range = fixed_max_range if fixed_max_range is not None else 0.5
+        ax.set_xlim(camera_pos[0] - max_range, camera_pos[0] + max_range)
+        ax.set_ylim(camera_pos[1] - max_range, camera_pos[1] + max_range)
+        ax.set_zlim(camera_pos[2] - max_range, camera_pos[2] + max_range)
     
     ax.set_xlabel('X (m)', fontsize=11)
     ax.set_ylabel('Y (m)', fontsize=11)
@@ -799,11 +732,11 @@ def main():
     parser.add_argument("--b-csv", default=None, help="Single B matrix CSV file (tag poses relative to camera) - alternative to detection-csv")
     parser.add_argument("--b-csv-dir", default=None, help="Directory containing B CSV files (will load all tags for a camera) - alternative to detection-csv")
     parser.add_argument("--camera-id", type=int, default=None, help="Camera ID (required if using --b-csv-dir)")
-    parser.add_argument("--camera-frame", action="store_true", help="Show in camera frame (camera at origin)")
     parser.add_argument("--start-frame", type=int, default=0, help="Starting frame index")
     parser.add_argument("--video", default=None, help="Path to video file to display in corner (synchronized with visualization)")
     parser.add_argument("--camera-matrix", default=None, help="Path to camera calibration file (.yaml or .npz format) for tag detection")
-    parser.add_argument("--tag-size", type=float, default=0.15, help="Tag size in meters (default: 0.15)")
+    # Keep defaults aligned with construct_B.py so pose estimates match
+    parser.add_argument("--tag-size", type=float, default=0.10, help="Tag size in meters (default: 0.10, matches construct_B.py)")
     parser.add_argument("--tag-family", type=str, default='tag36h11', help="Tag family (default: tag36h11)")
     args = parser.parse_args()
     
@@ -908,7 +841,7 @@ def main():
     
     # Calculate global fixed max range for constant scale
     print("\nCalculating global scale range...")
-    show_in_world_frame = not args.camera_frame
+    show_in_world_frame = True  # World/Optitrack frame only
     fixed_max_range = calculate_global_max_range(
         optitrack_data, 
         all_b_data if not use_detection_csv else None,
@@ -993,7 +926,7 @@ def main():
         print(f"  Video window will sync with visualization timestamps")
     
     current_frame = args.start_frame
-    show_in_world_frame = not args.camera_frame
+    show_in_world_frame = True  # Always plot in Optitrack/world frame
     
     def update_plot():
         visualize_frame(ax, optitrack_data, 
@@ -1040,10 +973,6 @@ def main():
         elif event.key == 'end' or event.key == 'e':
             current_frame = n_frames - 1
             update_plot()
-        elif event.key == ' ':
-            # Toggle frame reference
-            show_in_world_frame = not show_in_world_frame
-            update_plot()
         elif event.key == 'q':
             plt.close()
     
@@ -1059,7 +988,6 @@ def main():
     print("  RIGHT ARROW / 'd' - Next frame")
     print("  HOME / 'h'        - First frame")
     print("  END / 'e'         - Last frame")
-    print("  SPACE             - Toggle world/camera frame")
     print("  'q'               - Quit")
     print(f"{'='*60}\n")
     
