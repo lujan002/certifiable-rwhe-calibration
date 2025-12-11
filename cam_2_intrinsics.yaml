@@ -7,15 +7,15 @@ camera_matrix:
   rows: 3
   cols: 3
   # Placeholder values for ~60° FOV at 1080p - REPLACE WITH CALIBRATED VALUES
-  data: [ 1072.84211155, 0.00000000, 609.97471448,
-          0.00000000, 1073.65159443, 351.09770291,  
-          0.00000000, 0.00000000, 1.00000000]
+  data: [1072.84211155, 0.00000000, 609.97471448,
+         0.00000000, 1073.65159443, 351.09770291,
+         0.00000000, 0.00000000, 1.00000000]
 
 distortion_coefficients:
   rows: 1
   cols: 5
   # Placeholder - assume minimal distortion - REPLACE WITH CALIBRATED VALUES
-  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+  data: [0.20416257, -0.53349825, -0.01180723, -0.00337649, 0.42602773]
 
 distortion_model: plumb_bob
 

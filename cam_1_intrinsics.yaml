@@ -1,22 +1,21 @@
 # LEFT CAMERA INTRINSICS
 
-image_width: 1920
-image_height: 1080
+image_width: 1280
+image_height: 720
 
 camera_matrix:
   rows: 3
   cols: 3
   # Placeholder values for ~60° FOV at 1080p - REPLACE WITH CALIBRATED VALUES
-  data: [ 1075.37195135, 0.00000000, 639.25868944,
-          0.00000000, 1075.47338650, 351.35106788,
-          0.00000000, 0.00000000, 1.00000000]
+  data: [1075.37195135, 0.00000000, 639.25868944,
+         0.00000000, 1075.47338650, 351.35106788,
+         0.00000000, 0.00000000, 1.00000000]
 
 distortion_coefficients:
   rows: 1
   cols: 5
   # Placeholder - assume minimal distortion - REPLACE WITH CALIBRATED VALUES
-  data: [0.0, 0.0, 0.0, 0.0, 0.0]
-
+  data: [0.16162441, -0.17046436, -0.01345783, -0.01152359, -0.19290450]
 distortion_model: plumb_bob
 
 # Calibration status

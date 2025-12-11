@@ -29,7 +29,11 @@ import yaml
 
 # Import AprilTag detector from construct_B
 sys.path.insert(0, str(Path(__file__).parent))
-from construct_B import AprilTagDetector
+try:
+    from construct_B import AprilTagPoseEstimator
+except ImportError:
+    print("Warning: Could not import AprilTagPoseEstimator from construct_B")
+    AprilTagPoseEstimator = None
 
 # Add parent directory to path for SE3 utils if needed
 sys.path.insert(0, str(Path(__file__).parent))
@@ -381,25 +385,43 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
             
             # Draw tag detections using same logic as construct_B.py
             if detector is not None:
-                # Re-detect tags in the current video frame
-                detections_video = detector.detect(frame_bgr)
-                
-                if len(detections_video) > 0:
-                    for tag_id, pose, corners in detections_video:
-                        # Draw green rectangle around tag (same as construct_B.py)
-                        corners_int = corners.astype(int)
-                        cv2.polylines(frame_bgr, [corners_int], True, (0, 255, 0), 2)
-                        
-                        # Draw tag ID
-                        center = corners_int.mean(axis=0).astype(int)
-                        cv2.putText(frame_bgr, f"ID:{tag_id}", tuple(center),
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                        
-                        # Draw distance (same as construct_B.py)
-                        distance = np.linalg.norm(pose.t)
-                        cv2.putText(frame_bgr, f"{distance:.2f}m", 
-                                   (center[0], center[1] + 25),
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                try:
+                    # Try to detect tags in the current video frame
+                    detections_video = detector.detect(frame_bgr)
+                    
+                    if detections_video and len(detections_video) > 0:
+                        # Handle different return formats from detector
+                        for detection in detections_video:
+                            if len(detection) == 3:
+                                # Format: (tag_id, pose, corners)
+                                tag_id, pose, corners = detection
+                            elif len(detection) == 2:
+                                # Format: (tag_id, corners)
+                                tag_id, corners = detection
+                                pose = None
+                            else:
+                                # Unknown format, skip
+                                continue
+                            
+                            # Draw green rectangle around tag (same as construct_B.py)
+                            corners_int = corners.astype(int)
+                            cv2.polylines(frame_bgr, [corners_int], True, (0, 255, 0), 2)
+                            
+                            # Draw tag ID
+                            center = corners_int.mean(axis=0).astype(int)
+                            cv2.putText(frame_bgr, f"ID:{tag_id}", tuple(center),
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                            
+                            # Draw distance if pose is available (same as construct_B.py)
+                            if pose is not None and hasattr(pose, 't'):
+                                distance = np.linalg.norm(pose.t)
+                                cv2.putText(frame_bgr, f"{distance:.2f}m", 
+                                           (center[0], center[1] + 25),
+                                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                except Exception as e:
+                    print(f"Error during tag detection in video frame: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             # Add text overlay with timestamp and frame info
             cv2.putText(frame_bgr, f'Time: {timestamp:.3f}s', (10, 30),
@@ -617,7 +639,15 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
     ax.set_xlabel('X (m)', fontsize=11)
     ax.set_ylabel('Y (m)', fontsize=11)
     ax.set_zlabel('Z (m)', fontsize=11)
-    ax.legend()
+    
+    # Create legend without duplicate labels
+    handles, labels = ax.get_legend_handles_labels()
+    unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+    if unique:
+        ax.legend(*zip(*unique), loc='upper right')
+    else:
+        ax.legend(loc='upper right')
+    
     ax.grid(True, alpha=0.3)
 
 def match_timestamps(timestamps_A, timestamps_B, threshold=0.02):
@@ -684,11 +714,15 @@ def load_detection_csv(csv_file):
     """
     Load AprilTag detection CSV file.
     
-    Format: timestamp, tag_id, qx, qy, qz, qw, x, y, z
+    Format: timestamp, tag_id, orientation, qx, qy, qz, qw, x, y, z
     Multiple rows can have the same timestamp (one per tag detected)
     NaN rows indicate no tags detected at that timestamp
     """
     df = pd.read_csv(csv_file)
+    
+    # Debug: Print column names to see what we're working with
+    print(f"DEBUG: CSV columns: {list(df.columns)}")
+    print(f"DEBUG: First row: {df.iloc[0] if len(df) > 0 else 'Empty'}")
     
     # Group by timestamp
     timestamps = []
@@ -706,7 +740,8 @@ def load_detection_csv(csv_file):
         else:
             tag_id = int(row['tag_id'])
             
-            # Extract pose data
+            # Extract pose data - skip the 'orientation' column
+            # Assuming columns: timestamp, tag_id, orientation, qx, qy, qz, qw, x, y, z
             qx = row['qx']
             qy = row['qy']
             qz = row['qz']
@@ -732,6 +767,9 @@ def load_detection_csv(csv_file):
     
     # Sort timestamps
     timestamps = sorted(set(timestamps))
+    
+    print(f"DEBUG: Loaded {len(timestamps)} unique timestamps")
+    print(f"DEBUG: First few timestamps: {timestamps[:5] if len(timestamps) > 5 else timestamps}")
     
     return {
         'timestamps': np.array(timestamps),
@@ -879,7 +917,7 @@ def main():
     
     # Initialize AprilTag detector if video is provided
     detector = None
-    if args.video:
+    if args.video and AprilTagPoseEstimator is not None:
         # Load camera matrix for tag detection
         if args.camera_matrix:
             calib_path = Path(args.camera_matrix)
@@ -907,13 +945,15 @@ def main():
             dist = np.zeros(5)
         
         # Initialize detector (same as construct_B.py)
-        detector = AprilTagDetector(
+        detector = AprilTagPoseEstimator(
             K,
             dist,
             tag_size=args.tag_size,
             family=args.tag_family
         )
         print(f"  AprilTag detector initialized (tag_size={args.tag_size}m, family={args.tag_family})")
+    elif args.video and AprilTagPoseEstimator is None:
+        print("Warning: Could not initialize AprilTag detector. Video will be shown without tag detection.")
     
     # Load video if provided
     video_cap = None
