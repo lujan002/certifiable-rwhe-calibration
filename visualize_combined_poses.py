@@ -392,7 +392,10 @@ def visualize_frame(ax, optitrack_data, all_b_data, frame_idx,
                     if detections_video and len(detections_video) > 0:
                         # Handle different return formats from detector
                         for detection in detections_video:
-                            if len(detection) == 3:
+                            if len(detection) == 4:
+                                # Format: (tag_id, pose, corners, orientation)
+                                tag_id, pose, corners, _orientation = detection
+                            elif len(detection) == 3:
                                 # Format: (tag_id, pose, corners)
                                 tag_id, pose, corners = detection
                             elif len(detection) == 2:
