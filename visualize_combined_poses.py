@@ -803,7 +803,7 @@ def main():
     parser.add_argument("--start-frame", type=int, default=0, help="Starting frame index")
     parser.add_argument("--video", default=None, help="Path to video file to display in corner (synchronized with visualization)")
     parser.add_argument("--camera-matrix", default=None, help="Path to camera calibration file (.yaml or .npz format) for tag detection")
-    parser.add_argument("--tag-size", type=float, default=0.1, help="Tag size in meters (default: 0.1)")
+    parser.add_argument("--tag-size", type=float, default=0.15, help="Tag size in meters (default: 0.15)")
     parser.add_argument("--tag-family", type=str, default='tag36h11', help="Tag family (default: tag36h11)")
     args = parser.parse_args()
     
