@@ -3,8 +3,6 @@ Original repository: https://github.com/utiasSTARS/certifiable-rwhe-calibration
 
 Our work extends this repository by adding scripts and instructions for data processing, synchronization, and results vizualization. We used this work to test this rwhec solver on a real-life dataset consisting of monocular camera videos (with apriltag detections) and optitrack motion capture data. 
 
-# lujan002's Instructions
-
 # Cut Video
 
 Use Video editor of choice to find the precise timestamp (ms) where the flip occured. I used Lossless Cut. After writing down timestamps, run the following for each video:
