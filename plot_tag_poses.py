@@ -66,36 +66,46 @@ def load_first_A_pose_from_optitrack(optitrack_csv_file):
         print(f"Warning: Error loading first A pose from OptiTrack: {e}. Cannot transform poses.")
         return None
 
-def transform_poses_by_inv_A(translations, rotation_matrices, A_first):
-    """Transform tag poses by the inverse of the first A pose.
+def transform_poses_to_optitrack_frame(translations, rotation_matrices, A_first):
+    """Transform tag poses from calibration world frame to OptiTrack global frame.
+    
+    NOTE: This function is only needed if the Julia calibration code does NOT 
+    pre-process A matrices to anchor the world frame. If the Julia code uses
+    load_reference_A_pose() to transform A matrices, the tag poses are already
+    in the OptiTrack global frame and this transformation is not needed.
+    
+    A_first: transformation from world frame to OptiTrack frame (first OptiTrack measurement)
+    Y (tag poses): in calibration world frame
+    Goal: Transform Y to OptiTrack global frame
+    
+    To convert from calibration world frame to OptiTrack global frame: 
+    T_tag_optitrack = A_first @ T_tag_world
     
     Args:
-        translations: Nx3 array of tag positions
-        rotation_matrices: Nx3x3 array of rotation matrices
-        A_first: 4x4 transformation matrix of the first A pose
+        translations: Nx3 array of tag positions (in calibration world frame)
+        rotation_matrices: Nx3x3 array of rotation matrices (in calibration world frame)
+        A_first: 4x4 transformation matrix (world → OptiTrack first pose)
         
     Returns:
-        transformed_translations: Nx3 array of transformed positions
-        transformed_rotation_matrices: Nx3x3 array of transformed rotations
+        transformed_translations: Nx3 array of transformed positions (in OptiTrack global frame)
+        transformed_rotation_matrices: Nx3x3 array of transformed rotations (in OptiTrack global frame)
     """
     if A_first is None:
         return translations, rotation_matrices
-    
-    # Compute inverse of A_first
-    A_first_inv = np.linalg.inv(A_first)
     
     n_tags = len(translations)
     transformed_translations = np.zeros_like(translations)
     transformed_rotation_matrices = np.zeros_like(rotation_matrices)
     
     for i in range(n_tags):
-        # Construct 4x4 transformation matrix for this tag
+        # Construct 4x4 transformation matrix for this tag (in calibration world frame)
         T_tag = np.eye(4)
         T_tag[:3, :3] = rotation_matrices[i]
         T_tag[:3, 3] = translations[i]
         
-        # Transform: T_tag_transformed = A_first_inv @ T_tag
-        T_tag_transformed = A_first_inv @ T_tag
+        # Transform: T_tag_optitrack = A_first @ T_tag_world
+        # This converts tag pose from calibration world frame to OptiTrack global frame
+        T_tag_transformed = A_first @ T_tag
         
         # Extract transformed translation and rotation
         transformed_translations[i] = T_tag_transformed[:3, 3]
@@ -186,6 +196,24 @@ def plot_poses_interactive(tag_ids, translations, rotation_matrices, optitrack_p
     scatter = ax.scatter(xs, ys, zs, c=tag_ids, s=100, cmap='viridis', 
                          label='Tag Origins', edgecolors='black', linewidths=0.5)
     
+    # Plot origin (0, 0, 0) with arrow pointing in positive z direction
+    ax.scatter([0], [0], [0], c='red', s=200, marker='*', 
+               label='Origin', edgecolors='black', linewidths=1, zorder=10)
+    
+    # Arrow from origin pointing in positive z direction (much longer)
+    # Calculate a length that's a significant portion of the plot range
+    if len(translations) > 0:
+        z_range = zs.max() - zs.min() if len(zs) > 0 else 1000
+        origin_arrow_length = z_range * 0.2  # 20% of the z-range
+    else:
+        origin_arrow_length = 1000  # Default length in mm
+    
+    ax.plot([0, 0], [0, 0], [0, origin_arrow_length], 
+            'r-', linewidth=4, label='Z-axis (Origin)', zorder=9)
+    # Arrowhead
+    ax.scatter([0], [0], [origin_arrow_length], 
+              c='red', s=120, marker='^', zorder=10)
+    
     # Add text labels for each tag
     for i in range(len(tag_ids)):
         ax.text(xs[i], ys[i], zs[i], f"tag {int(tag_ids[i])}", 
@@ -256,20 +284,10 @@ def main():
     print(f"Loaded {len(tag_ids)} tag poses")
     print(f"Tag IDs: {tag_ids}")
     
-    # Load first A pose from OptiTrack and transform tag poses
-    A_first = None
-    if optitrack_csv:
-        print(f"\nLoading first A pose from OptiTrack file '{optitrack_csv}'...")
-        A_first = load_first_A_pose_from_optitrack(optitrack_csv)
-        
-        if A_first is not None:
-            print("Transforming tag poses to be relative to first A pose...")
-            translations, rotation_matrices = transform_poses_by_inv_A(
-                translations, rotation_matrices, A_first
-            )
-            print("Tag poses transformed successfully.")
-        else:
-            print("Warning: Could not load first A pose. Plotting untransformed poses.")
+    # NOTE: Tag poses from tag_poses.csv are already in the OptiTrack global frame
+    # because the Julia calibration code anchors the world frame to the first 
+    # OptiTrack measurement using load_reference_A_pose().
+    # No additional transformation is needed here.
     
     # Load OptiTrack trajectory if provided
     optitrack_positions = None

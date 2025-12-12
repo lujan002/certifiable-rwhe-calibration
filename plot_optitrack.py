@@ -60,7 +60,7 @@ def main():
     
     # Create plots
     fig, axes = plt.subplots(3, 1, figsize=(10, 8))
-    fig.suptitle('Euler Angles over Time', fontsize=16)
+    fig.suptitle('Optitrack Euler Angles over Time', fontsize=16)
     
     # Roll
     axes[0].plot(time, roll_deg, 'r-', linewidth=1.5)
