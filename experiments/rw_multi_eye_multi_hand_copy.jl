@@ -45,6 +45,44 @@ function evaluate_err(A, B, X, Y, n)
     display(err)
 end
 
+function transform_poses_by_ref(poses, A_ref_inv)
+    """Transform all poses by A_ref_inv to anchor world frame to the reference pose.
+    
+    Given poses A_i representing world -> optitrack_i, transform to A'_i = A_ref_inv * A_i
+    so that A'_ref = I (identity), anchoring the world frame to the reference optitrack pose.
+    """
+    n = size(poses, 1)
+    transformed = zeros(n, 4, 4)
+    for i in 1:n
+        transformed[i, :, :] = A_ref_inv * poses[i, :, :]
+    end
+    return transformed
+end
+
+function load_reference_A_pose(folder, dataset)
+    """Load the first A pose from the first A file to use as reference for anchoring world frame."""
+    directory_list = readdir(join([pwd(), "/data", folder, dataset]))
+    iter = Iterators.filter(item -> collect(split(item, ".")) != 1, directory_list)
+    iter_A = sort(collect(Iterators.filter(item -> last(split(split(item, '.')[1], '_')) == "A", collect(iter))))
+    
+    if isempty(iter_A)
+        error("No A files found in dataset")
+    end
+    
+    # Load first A file and get first pose
+    first_A_file = iter_A[1]
+    println("Using reference A pose from: $(first_A_file)")
+    A_quat_trans = readdlm(join([pwd(), "/data", folder, dataset, "/", first_A_file]), ',', Float64, '\n')
+    A_poses = quat_trans2poses(A_quat_trans)
+    
+    A_ref = A_poses[1, :, :]
+    A_ref_inv = inv(A_ref)
+    
+    println("Reference A pose (first measurement from first file):")
+    display(A_ref)
+    
+    return A_ref_inv
+end
 
 function process_data(folder, dataset)
     half_langevin_k = 125
@@ -65,6 +103,10 @@ function process_data(folder, dataset)
     println("Loading Data")
     Q = get_empty_sparse_cost_matrix(n, m, false)
 
+    # Load reference A pose to anchor world frame to first OptiTrack measurement
+    A_ref_inv = load_reference_A_pose(folder, dataset)
+    println("World frame anchored to first OptiTrack measurement")
+
     for pair in iter_AB
         display(join([pwd(), "/data", folder, dataset, "/" , pair[1]]))
         
@@ -76,8 +118,11 @@ function process_data(folder, dataset)
         #0.124476  -0.969126   -0.212838   0.431168;
         #0.973343   0.0776193   0.215823  -1.64415;
         #0.0        0.0         0.0        1.0]
-        A_poses = quat_trans2poses(A_quat_trans)
+        A_poses_raw = quat_trans2poses(A_quat_trans)
         B_poses = quat_trans2poses(B_quat_trans)
+        
+        # Transform A poses to anchor world frame to reference pose
+        A_poses = transform_poses_by_ref(A_poses_raw, A_ref_inv)
         frame_x = parse(Int64, split(pair[1], "_")[2])
         frame_y = parse(Int64, split(pair[1], "_")[4])
         x_index = findfirst(item -> item == frame_x, tags)
