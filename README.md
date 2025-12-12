@@ -1,5 +1,5 @@
 # Fork of certifiable-rwhe-calibration for Northeastern EECE 5550: Mobile Robotics Final Project
-Original repositiry: https://github.com/utiasSTARS/certifiable-rwhe-calibration
+Original repository: https://github.com/utiasSTARS/certifiable-rwhe-calibration
 
 Our work extends this repository by adding scripts and instructions for data processing, synchronization, and results vizualization. We used this work to test this rwhec solver on a real-life dataset consisting of monocular camera videos (with apriltag detections) and optitrack motion capture data. 
 
