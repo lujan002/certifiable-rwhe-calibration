@@ -6,6 +6,11 @@ correct algorithm for generalized robot-world and hand-eye
 calibration (RWHEC) presented in the above repository by adding scripts and instructions for data processing, synchronization, and results vizualization for a simplified, mutli-sensor robotic platform. Our data consists of monocular camera videos (with apriltag detections) and optitrack motion capture data. 
 The intention behind this project is to see whether this method can be implemented on a simplified platform with two cameras.
 
+<img width="345" height="279" alt="problem statement" src="https://github.com/user-attachments/assets/e5a72a3a-061b-4b93-9fb5-fb1744bee7ea" />
+<img width="200" height="300" alt="problem statement" src="https://github.com/user-attachments/assets/fc1b88ca-e6f8-4f0d-bae3-d93402b22516" />
+<img width="400" height="400" alt="problem statement" src="https://github.com/user-attachments/assets/e56900fc-df42-490c-a4af-f3e1c687cd3e" />
+
+
 # Step-by-Step Instructions
 ## Cut Video
 
