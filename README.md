@@ -3,21 +3,20 @@ Original repository: https://github.com/utiasSTARS/certifiable-rwhe-calibration
 
 Our work extends the certifiably
 correct algorithm for generalized robot-world and hand-eye
-calibration (RWHEC) presented in the above repository by adding scripts and instructions for data processing, synchronization, and results vizualization for a simplified, mutli-
-sensor robotic platform. Our data consists of monocular camera videos (with apriltag detections) and optitrack motion capture data. 
+calibration (RWHEC) presented in the above repository by adding scripts and instructions for data processing, synchronization, and results vizualization for a simplified, mutli-sensor robotic platform. Our data consists of monocular camera videos (with apriltag detections) and optitrack motion capture data. 
 The intention behind this project is to see whether this method can be implemented on a simplified platform with two cameras.
 
+# Step-by-Step Instructions
+## Cut Video
 
-# Cut Video
-
-Use Video editor of choice to find the precise timestamp (ms) where the flip occured. I used Lossless Cut. After writing down timestamps, run the following for each video:
+Use your video editor of choice to find the precise timestamp (ms) where the flip occured. I used Lossless Cut. After writing down timestamps, run the following for each video:
 
 `ffmpeg -i input.mp4 -ss 00:01:30 -t 00:01:15 -c copy output.mp4`
 where -ss: start time and -t: duration 
 
 ex: `ffmpeg -i Left_success3.mp4 -ss 00:00:01.342 -t 00:00:55 -c:v libx264 -c:a aac Left_success3_cut.mp4`
 
-Camera time offsets (where the video was cut, aka where the “sync flip” occurs)
+Below are the specific camera time offsets I used for a selection of the data (where the video was cut, aka where the “sync flip” occurs):
 
 Success1
 
@@ -29,21 +28,25 @@ Success3
 - Cam 1: 1.342
 - Cam 2: 3.907
 
-# Cut Optitrack Data
+## Cut Optitrack Data
+
+Run this to plot the euler angles (roll, pitch, yaw) of the optitrack data (world-to-camera rig poses):
 
 `python3 plot_optitrack.py data/high-bay/raw/optitrack_success3.csv` 
 
-Once plots show up, zoom in on the spikes that occur during the sync flips, record the time (x axis) and delete up to those collumns in the csv
+Once plots show up, zoom in on the spikes that occur during the sync flips, record the time (x axis) and delete up to those collumns in the csv:
 
 Ex: optitrack_success3: trim at 1.2s
 
 `python3 cut_optitrack.py data/high-bay/raw/optitrack_success3.csv 1.2`
 
-# Visualize Optitrack Pose Trajectory
+## Visualize Optitrack Pose Trajectory
 
 `python3 visualize_optitrack_pose.py data/high-bay/raw/optitrack_success3_cut.csv`
 
-# Construct B
+## Construct B
+
+To construct the matrix of camera-to-tag poses, run the following:
 
 ```jsx
 cd ~/Desktop/certifiable-rwhe-calibration
@@ -73,7 +76,7 @@ The CSV will include:
 - qx, qy, qz, qw: Quaternion orientation
 - x, y, z: Position in meters
 
-# Combined Visualization
+## Combined Visualization
 
 ```jsx
 python3 visualize_combined_poses.py \
@@ -84,7 +87,7 @@ python3 visualize_combined_poses.py \
 --start-frame 205
 ```
 
-# Construct A-B pairs
+## Construct A-B pairs
 
 Now once A and B csv files are made, we need to input into `construct_synchronized_A_and_B.py` which perfectly syncs timestamps (greedy policy to find where time-steps best match both datasets and complies new csv pair where each row is a matched / filtered row from the orignal two datasets)
 
@@ -97,7 +100,7 @@ Now once A and B csv files are made, we need to input into `construct_synchroniz
     --threshold 0.1
 ```
 
-# Run Main Julia Solver
+## Run Main Julia Solver
 
 `julia --project=. experiments/rw_multi_eye_multi_hand_copy.jl`
 
@@ -105,7 +108,7 @@ Apparently if a tag only appears with one camera, there can be a singular (non-i
 
 quick fix:    `rm data/high-bay/combined/tag_8_*`
 
-# Visualize tag poses (Y)
+## Visualize tag poses (Y)
 
 It will be helpful to run construct_B again just to verity with the live AprilTag viewer that pops if the tags are in the right spot
 
